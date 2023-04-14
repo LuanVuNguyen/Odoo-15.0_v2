@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <data>
+        <record id="view_attendance_custom_form" model="ir.ui.view">
+            <field name="name">attendance_custom_form.view.form</field>
+            <field name="model">hr.attendance</field>
+            <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//form/sheet/group" position="inside">
+                    <field name="tracking_video"/>
+                    <field name="tracking_video_checkout"/>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

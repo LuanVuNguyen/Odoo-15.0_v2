@@ -141,11 +141,17 @@ class LibraryController(http.Controller):
                 err_RFID = []
                 for v in rfid:
                     product_templ_id = http.request.env['product.template'].sudo().search([['x_RFID_PRODUCT', '=', v]])
+                    categ_id = re.sub(r'\D', '', str(product_templ_id['categ_id']))
+                    if categ_id=='':
+                        categ_id = 0
+                    categ_info = http.request.env['product.category'].sudo().search([['id', '=', int(categ_id)]])
                     vals = {
                         "RFID": product_templ_id['x_RFID_PRODUCT'],
                         "Product_name": product_templ_id['name'],
                         "Product_code": product_templ_id['barcode'],
                         "quantity": 1,
+                        "Product Category": categ_info['name'],
+                        "Price": product_templ_id['list_price'],
                     }
                     if vals['Product_name'] is not False:
                         value.append(vals)
@@ -176,10 +182,10 @@ class LibraryController(http.Controller):
             print(data)
             rfidHad = []
             for line in data:
-                rfid = line['rfid'],
+                rfid = line['RFID'],
                 # barcode = line['barcode'],
                 # product = line['product_name'],
-                quantity = line['quantity'],
+                quantity = line['QUANTITY'],
 
                 product_id = http.request.env['product.template'].sudo().search([['x_RFID_PRODUCT', '=', rfid]])
 
@@ -193,7 +199,7 @@ class LibraryController(http.Controller):
                     vals = {
                         'inventory_quantity': quantity[0]
                     }
-                    rfidHad.append(line['rfid'])
+                    rfidHad.append(line['RFID'])
                     for value in stock_id:
                         value.sudo().write(vals)
             print( )
@@ -297,34 +303,78 @@ class LibraryController(http.Controller):
         try:
             product_resquest = json.loads(request.httprequest.data)
             if product_resquest:
-                responsible = product_resquest['responsible']
-                name_product = product_resquest['name_product']
-                pin = product_resquest["barcode"]
+                book_name = product_resquest['bookname']
+                author = product_resquest['author']
+                cate = product_resquest["cate"]
                 rfid = product_resquest["rfid"]
-                users_info = http.request.env['res.users'].sudo().search([['name', '=', responsible]])
-                product_resquest = http.request.env['product.template'].sudo().search([["barcode", "=", pin]])
+                book_id = product_resquest["id"]
+                price = product_resquest["price"]
+                publisher = product_resquest["publisher"]
+                avt_book = product_resquest["avt_book"]
+
+                if (len(cate)>1):
+                    id_cate = [int(i) for i in cate]
+                    for i in id_cate:
+                        categ_info = http.request.env['product.category'].sudo().search([['id', '=', id_cate[i]]])
+                        categ_info += categ_info["name"]
+                        print(categ_info)
+                else:
+                    id_cate = int(cate)
+                    print(id_cate)
+
+                total_price = int(price) + int(price)*0.05
+
                 product_resquest_rfid = http.request.env['product.template'].sudo().search(
                     [["x_RFID_PRODUCT", "=", rfid]])
-                if not users_info:
-                    raise exceptions.ValidationError("USERS IS NOT EXISTED")
-                elif product_resquest:
-                    raise exceptions.ValidationError("PINCODE PRODUCT IS EXISTED")
-                elif product_resquest_rfid:
+                if product_resquest_rfid:
                     raise exceptions.ValidationError("RFID PRODUCT IS EXISTED")
                 else:
-                    print(users_info['id'])
+                    # categ_id = re.sub(r'\D', '', str(product_resquest_rfid['categ_id']))
+                    # categ_info = http.request.env['product.category'].sudo().search([['id', '=', int(categ_id)]])
                     vals = {
-                        "responsible_id": users_info['id'],
                         "x_RFID_PRODUCT": rfid,
-                        "barcode": pin,
-                        "name": name_product
+                        "barcode": book_id,
+                        "name": book_name,
+                        "x_author": author,
+                        "x_publisher": publisher,
+                        "standard_price": price,
+                        "categ_id": id_cate,
+                        "image_1920": avt_book,
+                        "list_price": total_price
                     }
-                    print(vals)
-                    http.request.env['product.template'].sudo().create(vals)
+                    # http.request.env['product.template'].sudo().create(vals)
                     return {
                         "code": 201,
                         "message": 'Successfully',
                     }
+            else:
+                raise exceptions.ValidationError("Invalid Product Input")
+        except Exception as e:
+            return {
+                "status": 200,
+                "message": e
+            }
+
+    # API get info user
+    @http.route('/inventory_controller/get_user_info', type='json', auth='public', methods=['POST'], cors='*', csrf=False)
+    def get_user(selfs, **rec):
+        try:
+            user_request = json.loads(request.httprequest.data)
+            print(user_request)
+            if user_request:
+                uid = user_request['id']
+                users_info = http.request.env['res.users'].sudo().search([['id', '=', uid]])
+                if not users_info:
+                    raise exceptions.ValidationError("USERS IS NOT EXISTED")
+                else:
+                    vals = {
+                        "code": 201,
+                        "message": 'Successfully',
+                        "job_title": users_info['job_title'],
+                        "name": users_info['name'],
+                        "avt": users_info['image_1920']
+                    }
+                    return vals
             else:
                 raise exceptions.ValidationError("Invalid Product Input")
         except Exception as e:

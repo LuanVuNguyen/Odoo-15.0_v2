@@ -1,19 +1,13 @@
 # -*- coding: utf-8 -*-
 # from odoo import http
 
+import base64
+import json
+import re
 from datetime import datetime
 
 from odoo import exceptions, http
 from odoo.http import request, Response
-import re
-import json
-import csv
-import logging
-import os.path
-import base64
-from datetime import datetime
-
-from stdnum.cr import cr
 
 current_Date = datetime.today().strftime('%m/%d/%Y')
 
@@ -130,7 +124,7 @@ class LibraryController(http.Controller):
 
     # SCAN RFID
 
-#API SCAN KIEM KE
+    # API SCAN KIEM KE
     @http.route('/inventory_controller/get_quant', type='json', auth='public')
     def get_multiple_product(self):
         try:
@@ -152,6 +146,7 @@ class LibraryController(http.Controller):
                         "quantity": 1,
                         "Product Category": categ_info['name'],
                         "Price": product_templ_id['list_price'],
+                        "Avt_book": product_templ_id['image_1920']
                     }
                     if vals['Product_name'] is not False:
                         value.append(vals)
@@ -182,10 +177,10 @@ class LibraryController(http.Controller):
             print(data)
             rfidHad = []
             for line in data:
-                rfid = line['RFID'],
+                rfid = line['rfid'],
                 # barcode = line['barcode'],
                 # product = line['product_name'],
-                quantity = line['QUANTITY'],
+                quantity = line['quantity'],
 
                 product_id = http.request.env['product.template'].sudo().search([['x_RFID_PRODUCT', '=', rfid]])
 
@@ -199,10 +194,10 @@ class LibraryController(http.Controller):
                     vals = {
                         'inventory_quantity': quantity[0]
                     }
-                    rfidHad.append(line['RFID'])
+                    rfidHad.append(line['rfid'])
                     for value in stock_id:
                         value.sudo().write(vals)
-            print( )
+            print()
             print(rfidHad)
             self.create_new_inventory_record(data, rfidHad)
             return Response(json.dumps(json.dumps({
@@ -213,6 +208,7 @@ class LibraryController(http.Controller):
                 "code": 200,
                 "message": e
             }
+
     def create_dict(self, keydict, valuedict):
         try:
             res = {}
@@ -226,7 +222,8 @@ class LibraryController(http.Controller):
             return e
 
     # HIỂN THỊ THÔNG TIN SẢN PHẦM
-    @http.route('/inventory_controller/get_info_product', type='json', auth='public', methods=['POST'], cors='*', csrf=False)
+    @http.route('/inventory_controller/get_info_product', type='json', auth='public', methods=['POST'], cors='*',
+                csrf=False)
     def get_info_product(self, **rec):
         try:
             product_request = json.loads(request.httprequest.data)
@@ -265,6 +262,23 @@ class LibraryController(http.Controller):
                 "message": e
             }
 
+    @http.route('/inventory_controller/get_info_all_product', type='json', auth='public', methods=['POST'], cors='*',
+                csrf=False)
+    def get_info_all_product(self, **rec):
+        try:
+            product_templates = http.request.env['product.template'].sudo().search_read([], ['name', 'x_RFID_PRODUCT'])
+            return {
+                "code": 200,
+                "status": "SUCCESSFULLY",
+                "products": product_templates
+            }
+        except Exception as e:
+            return {
+                "code": 200,
+                "status": "Error",
+                "message": str(e)
+            }
+
     # API DANG KI RFID CHO SAN PHAM THEO MA PIN
     @http.route('/inventory_controller/register_product', type='json', auth='public', methods=['POST'], cors='*',
                 csrf=False)
@@ -298,7 +312,8 @@ class LibraryController(http.Controller):
             }
 
     # API DANG KI SAN PHAM MOI
-    @http.route('/inventory_controller/creat_new_product', type='json', auth='public', methods=['POST'], cors='*', csrf=False)
+    @http.route('/inventory_controller/creat_new_product', type='json', auth='public', methods=['POST'], cors='*',
+                csrf=False)
     def creat_new_product(selfs, **rec):
         try:
             product_resquest = json.loads(request.httprequest.data)
@@ -311,26 +326,39 @@ class LibraryController(http.Controller):
                 price = product_resquest["price"]
                 publisher = product_resquest["publisher"]
                 avt_book = product_resquest["avt_book"]
-
-                if (len(cate)>1):
+                list_new = []
+                if (len(cate) > 1):
                     id_cate = [int(i) for i in cate]
-                    for i in id_cate:
-                        categ_info = http.request.env['product.category'].sudo().search([['id', '=', id_cate[i]]])
-                        categ_info += categ_info["name"]
-                        print(categ_info)
+                    for j in id_cate:
+                        if j == 1:
+                            j += 9
+                        categ_info = http.request.env['product.category'].sudo().search([['id', '=', j]])
+                        if categ_info:
+                            list_new.append(categ_info["name"])
+                    new_name = '/'.join(list_new)
+                    complete_name = 'All / ' + '/'.join(list_new)
+                    categ_info = http.request.env['product.category'].sudo().search([['name', '=', new_name]])
+
+                    if categ_info:
+                        id_cate = categ_info["id"]
+                    else:
+                        print(complete_name)
+                        vals = {
+                            "name": new_name,
+                        }
+                        http.request.env['product.category'].sudo().create(vals)
+                        categ_info = http.request.env['product.category'].sudo().search([['name', '=', new_name]])
+                        id_cate = categ_info["id"]
                 else:
                     id_cate = int(cate)
-                    print(id_cate)
 
-                total_price = int(price) + int(price)*0.05
-
+                total_price = int(price) + int(price) * 0.05
                 product_resquest_rfid = http.request.env['product.template'].sudo().search(
                     [["x_RFID_PRODUCT", "=", rfid]])
+
                 if product_resquest_rfid:
                     raise exceptions.ValidationError("RFID PRODUCT IS EXISTED")
                 else:
-                    # categ_id = re.sub(r'\D', '', str(product_resquest_rfid['categ_id']))
-                    # categ_info = http.request.env['product.category'].sudo().search([['id', '=', int(categ_id)]])
                     vals = {
                         "x_RFID_PRODUCT": rfid,
                         "barcode": book_id,
@@ -342,7 +370,7 @@ class LibraryController(http.Controller):
                         "image_1920": avt_book,
                         "list_price": total_price
                     }
-                    # http.request.env['product.template'].sudo().create(vals)
+                    http.request.env['product.template'].sudo().create(vals)
                     return {
                         "code": 201,
                         "message": 'Successfully',
@@ -355,12 +383,11 @@ class LibraryController(http.Controller):
                 "message": e
             }
 
-    # API get info user
-    @http.route('/inventory_controller/get_user_info', type='json', auth='public', methods=['POST'], cors='*', csrf=False)
-    def get_user(selfs, **rec):
+    @http.route('/inventory_controller/get_user_info', type='json', auth='public', methods=['POST'], cors='*',
+                csrf=False)
+    def get_user_info(self, **rec):
         try:
             user_request = json.loads(request.httprequest.data)
-            print(user_request)
             if user_request:
                 uid = user_request['id']
                 users_info = http.request.env['res.users'].sudo().search([['id', '=', uid]])
@@ -372,13 +399,74 @@ class LibraryController(http.Controller):
                         "message": 'Successfully',
                         "job_title": users_info['job_title'],
                         "name": users_info['name'],
-                        "avt": users_info['image_1920']
+                        "avt": users_info['image_1920'],
+                        "phone": users_info['employee_phone'],
+                        "email": users_info['private_email'],
+                        "date_of_birth": users_info['birthday'],
+                        "address": users_info['private_street']
                     }
                     return vals
             else:
                 raise exceptions.ValidationError("Invalid Product Input")
         except Exception as e:
             return {
-                "status": 200,
+                "code": 200,
+                "status": "Error",
+                "message": e
+            }
+    @http.route('/inventory_controller/edit_user_info', type='json', auth='public', methods=['POST'], cors='*',
+                csrf=False)
+    def edit_user_info(self, **rec):
+        try:
+            user_request = json.loads(request.httprequest.data)
+            if user_request:
+                uid = user_request['id']
+                name = user_request['name']
+                email = user_request['email']
+                DoB = user_request['date_of_birth']
+                address = user_request['address']
+                avt = user_request['image_1920']
+                phone = user_request['phone']
+                users_info = http.request.env['res.users'].sudo().search([['id', '=', uid]])
+                if not users_info:
+                    raise exceptions.ValidationError("USERS IS NOT EXISTED")
+                else:
+                    vals = {
+                        "code": 201,
+                        "message": 'Successfully',
+                    }
+                    users_info.write({'name': name})
+                    users_info.write({'image_1920': avt})
+                    users_info.write({'private_street': address})
+                    users_info.write({'employee_phone': phone})
+                    users_info.write({'birthday': DoB})
+                    users_info.write({'private_email': email})
+                    return vals
+            else:
+                raise exceptions.ValidationError("Invalid Product Input")
+        except Exception as e:
+            return {
+                "code": 200,
+                "status": "Error",
+                "message": e
+            }
+    @http.route('/inventory_controller/pay_product', type='json', auth='public')
+    def pay_product(self):
+        try:
+            request_data = json.loads(request.httprequest.data)
+            if request_data is not None:
+                rfid = request_data['rfid']
+                product_templ_id = http.request.env['product.template'].sudo().search([['x_RFID_PRODUCT', '=', rfid]])
+                if product_templ_id:
+                    product_templ_id.unlink()
+                    vals = {
+                        "code": 201,
+                        "message": 'Successfully',
+                    }
+                    return vals
+        except Exception as e:
+            return {
+                "status": "Error",
+                "code": 200,
                 "message": e
             }
